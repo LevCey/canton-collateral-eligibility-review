@@ -1,72 +1,141 @@
 # RWA Collateral Eligibility Review
 
-RWA Collateral Eligibility Review is a Canton-native application for privacy-aware collateral review in tokenized private credit workflows.
+A Canton-native application for privacy-aware collateral eligibility review in tokenized private credit workflows.
 
-The product is designed for an Operating Team / Collateral Operations team that needs input from custodians, legal reviewers, and compliance reviewers to decide whether a tokenized private credit note can be accepted as collateral.
+One Operating Team coordinates private inputs from a Custodian, Legal Counsel, and Compliance Provider to produce a shared, auditable eligibility decision — without exposing each reviewer's data to the others.
 
-Instead of relying on email, spreadsheets, bilateral follow-up, and scattered documentation, the workflow coordinates private reviewer inputs and produces one shared, auditable eligibility decision.
+## How It Works
 
-## Core Thesis
+```
+Operating Team creates a review case for a tokenized private credit note
+  │
+  ├── Custodian receives a private task → submits custody verification
+  ├── Legal Counsel receives a private task → submits legal assessment
+  └── Compliance Provider receives a private task → submits compliance review
+  │
+  ▼
+Operating Team finalizes → shared Eligible / Ineligible decision
+  │
+  ▼
+All parties see the final decision + audit trail
+```
 
-Private collateral data can still produce one shared, auditable eligibility decision.
+Each reviewer sees only their own task. They cannot see each other's inputs or the orchestrator case. The final decision is shared with all participants.
 
-This repository is focused on proving that thesis through:
+## Privacy Model
 
-- product strategy
-- demo planning
-- submission materials
-- project framing for HackCanton Season #1
+This application uses per-reviewer contracts to enforce real Canton privacy:
+
+| Contract | Visible To |
+|----------|-----------|
+| `CollateralReviewCase` | Operating Team only |
+| `ReviewTask` (per reviewer) | Operating Team + that reviewer only |
+| `ReviewResult` | Operating Team + submitting reviewer |
+| `EligibilityDecision` | All four parties |
+
+Privacy guarantees are enforced on-ledger and verified by Daml tests.
+
+## Architecture
+
+```
+┌─────────────────────────────┐
+│   Frontend (React + Tailwind)│  Role switcher, review forms,
+│   Role-based views           │  status dashboard, audit trail
+└──────────────┬──────────────┘
+               │ HTTP
+┌──────────────▼──────────────┐
+│   Backend (FastAPI)          │  Canton JSON API v2 proxy
+│   Role → Party mapping       │  Create, exercise, query
+└──────────────┬──────────────┘
+               │ JSON API v2
+┌──────────────▼──────────────┐
+│   Canton DevNet              │  Daml contracts
+│   4 parties, per-reviewer    │  Selective visibility
+│   task contracts             │  Auditable decisions
+└─────────────────────────────┘
+```
+
+## Project Structure
+
+```
+├── daml/                          # Daml smart contracts
+│   ├── CollateralReview/Main.daml # Templates: ReviewTask, ReviewResult,
+│   │                              # CollateralReviewCase, EligibilityDecision
+│   ├── Setup.daml                 # Party allocation + demo case
+│   └── Test.daml                  # 8 tests including privacy assertions
+├── backend/                       # FastAPI service
+│   ├── main.py                    # REST endpoints
+│   ├── canton_client.py           # Canton JSON API v2 client
+│   └── .env.example               # Configuration template
+├── frontend/                      # React SPA
+│   ├── src/App.jsx                # Role switching shell
+│   └── src/components/            # OperatingTeamView, ReviewerView,
+│                                  # RoleSwitcher, AuditTrail, StatusBadge
+└── daml.yaml                      # Daml SDK 3.4.10
+```
+
+## Daml Tests
+
+8 passing tests covering workflow logic and privacy:
+
+| Test | What It Proves |
+|------|---------------|
+| `testHappyPath` | 3 approvals → Eligible |
+| `testRejection` | 1 rejection → Ineligible |
+| `testWrongParty` | Custodian cannot exercise Legal's choice |
+| `testDoubleSubmit` | Reviewer cannot submit twice |
+| `testPrivacy` | Custodian cannot see Legal's task |
+| `testReviewerCannotSeeCase` | Reviewer cannot see orchestrator |
+| `testDecisionVisibility` | Final decision visible to all |
+| `testPartialState` | Partial submissions → Under Review |
+
+## Quick Start
+
+### Daml
+
+```bash
+daml build
+daml test
+```
+
+### Backend
+
+```bash
+cd backend
+cp .env.example .env    # configure Canton API URL and party IDs
+pip install -r requirements.txt
+uvicorn main:app --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+cp .env.example .env    # set VITE_API_URL
+npm install
+npm run dev
+```
+
+## Demo Scenario
+
+- **Asset:** Tokenized private credit note (PCN-2026-001)
+- **Issuer:** Meridian Capital
+- **Decision:** Is this note eligible as collateral?
+- **Roles:** Operating Team, Custodian, Legal Counsel, Compliance Provider
 
 ## Why Canton
 
-This use case depends on:
+This workflow depends on properties that are difficult to reproduce elsewhere:
 
-- selective visibility
-- multi-party coordination
-- shared state
-- auditability
+- **Selective visibility** — each reviewer sees only their own task
+- **Multi-party coordination** — one team coordinates multiple private reviewers
+- **Shared state** — all parties rely on the same eligibility decision
+- **Auditability** — the full decision lifecycle is recorded on-ledger
 
-Canton is a strong fit because the workflow requires multiple participants to contribute to one decision without exposing all sensitive data to all parties.
+## Track
 
-## Current Product Framing
-
-The commercial strategy is operator-first:
-
-- primary buyer: collateral operations lead or risk operations lead at a tokenized private credit platform
-- first product: internal-first collateral eligibility review workflow
-- counterparties: invited workflow participants, not first-day customers
-
-The starting point is not a network sale. The starting point is one operator removing a painful manual process.
-
-## Demo Direction
-
-The demo focuses on one asset and one decision:
-
-- asset: tokenized private credit note
-- decision: is this note eligible as collateral?
-
-The core demo moment is:
-
-- private reviewer inputs go in
-- one shared decision comes out
-- the result is auditable
-
-## Current Status
-
-The project is currently in the planning and MVP-definition stage.
-
-Next steps:
-
-- build the live Canton demo
-- measure real workflow metrics from a canonical demo run
-- complete public repo structure and implementation
-
-## Track Fit
-
-Primary track:
-
-- Real-World Asset (RWA) & Business Workflows
+HackCanton Season #1 — Track 1: RWA & Business Workflows
 
 ## License
 
-TBD
+MIT
