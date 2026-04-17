@@ -1,0 +1,12 @@
+sdk-version: 3.4.10
+name: collateral-eligibility-review
+source: daml
+init-script: Setup:setup
+version: 0.1.0
+exposed-modules:
+  - CollateralReview.Main
+  - Setup
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml3-script

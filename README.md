@@ -51,22 +51,15 @@ The core demo moment is:
 - one shared decision comes out
 - the result is auditable
 
-## Repository Contents
-
-- [STRATEGY.md](./STRATEGY.md): product, submission, and commercial strategy
-- [DEMO_PLAN.md](./DEMO_PLAN.md): judge-facing demo structure and wow moment
-- [submission/](./submission): hackathon submission materials
-- [assets/logo/](./assets/logo): project logo assets
-
 ## Current Status
 
-The repository currently contains planning, positioning, and submission documents.
+The project is currently in the planning and MVP-definition stage.
 
 Next steps:
 
 - build the live Canton demo
 - measure real workflow metrics from a canonical demo run
-- complete submission assets and public repo polish
+- complete public repo structure and implementation
 
 ## Track Fit
 

@@ -1,0 +1,48 @@
+module Setup where
+
+import Daml.Script
+import CollateralReview.Main
+
+-- | Allocate parties and create the demo review case.
+setup : Script ()
+setup = script do
+  operatingTeam <- allocatePartyByHint (PartyIdHint "OperatingTeam")
+  custodian <- allocatePartyByHint (PartyIdHint "Custodian")
+  legalCounsel <- allocatePartyByHint (PartyIdHint "LegalCounsel")
+  complianceProvider <- allocatePartyByHint (PartyIdHint "ComplianceProvider")
+
+  opId <- validateUserId "operatingteam"
+  custId <- validateUserId "custodian"
+  legalId <- validateUserId "legalcounsel"
+  compId <- validateUserId "complianceprovider"
+
+  createUser (User opId (Some operatingTeam)) [CanActAs operatingTeam]
+  createUser (User custId (Some custodian)) [CanActAs custodian]
+  createUser (User legalId (Some legalCounsel)) [CanActAs legalCounsel]
+  createUser (User compId (Some complianceProvider)) [CanActAs complianceProvider]
+
+  now <- getTime
+
+  submit operatingTeam do
+    createCmd CollateralReviewCase with
+      operatingTeam
+      custodian
+      legalCounsel
+      complianceProvider
+      assetId = "PCN-2026-001"
+      assetType = "Private Credit Note"
+      issuer = "Meridian Capital"
+      maturity = "2027-06-15"
+      coupon = "5.25%"
+      status = UnderReview
+      custodianInput = None
+      legalInput = None
+      complianceInput = None
+      auditLog = [AuditEntry with eventType = "CaseCreated", actor = operatingTeam, timestamp = now]
+
+  debug "=== Collateral Review Setup Complete ==="
+  debug $ "OperatingTeam: " <> show operatingTeam
+  debug $ "Custodian: " <> show custodian
+  debug $ "LegalCounsel: " <> show legalCounsel
+  debug $ "ComplianceProvider: " <> show complianceProvider
+  return ()

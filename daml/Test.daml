@@ -1,0 +1,113 @@
+module Test where
+
+import Daml.Script
+import CollateralReview.Main
+
+-- | Helper: allocate the 4 parties.
+data TestParties = TestParties with
+  opTeam : Party
+  cust   : Party
+  legal  : Party
+  comp   : Party
+
+allocateTestParties : Script TestParties
+allocateTestParties = script do
+  opTeam <- allocateParty "OperatingTeam"
+  cust <- allocateParty "Custodian"
+  legal <- allocateParty "LegalCounsel"
+  comp <- allocateParty "ComplianceProvider"
+  return TestParties with ..
+
+-- | Helper: create a fresh review case.
+createTestCase : TestParties -> Script (ContractId CollateralReviewCase)
+createTestCase TestParties{..} = do
+  now <- getTime
+  submit opTeam do
+    createCmd CollateralReviewCase with
+      operatingTeam = opTeam
+      custodian = cust
+      legalCounsel = legal
+      complianceProvider = comp
+      assetId = "PCN-TEST-001"
+      assetType = "Private Credit Note"
+      issuer = "Test Issuer"
+      maturity = "2027-01-01"
+      coupon = "5.00%"
+      status = UnderReview
+      custodianInput = None
+      legalInput = None
+      complianceInput = None
+      auditLog = [AuditEntry with eventType = "CaseCreated", actor = opTeam, timestamp = now]
+
+-- | Happy path: all 3 reviewers approve → Eligible.
+testHappyPath : Script ()
+testHappyPath = script do
+  parties <- allocateTestParties
+  cid <- createTestCase parties
+
+  cid <- submit parties.cust do
+    exerciseCmd cid SubmitCustodianReview with decision = Approve, rationale = "Collateral verified"
+  cid <- submit parties.legal do
+    exerciseCmd cid SubmitLegalReview with decision = Approve, rationale = "Legal form acceptable"
+  cid <- submit parties.comp do
+    exerciseCmd cid SubmitComplianceReview with decision = Approve, rationale = "Review clear"
+
+  Some finalCase <- queryContractId parties.opTeam cid
+  assertMsg "Status should be Eligible" (finalCase.status == Eligible)
+  assertMsg "Audit log should have 5 entries" (length finalCase.auditLog == 5)
+  debug "✓ Happy path passed"
+
+-- | Rejection path: one reviewer rejects → Ineligible.
+testRejection : Script ()
+testRejection = script do
+  parties <- allocateTestParties
+  cid <- createTestCase parties
+
+  cid <- submit parties.cust do
+    exerciseCmd cid SubmitCustodianReview with decision = Approve, rationale = "OK"
+  cid <- submit parties.legal do
+    exerciseCmd cid SubmitLegalReview with decision = Reject, rationale = "Jurisdiction issue"
+  cid <- submit parties.comp do
+    exerciseCmd cid SubmitComplianceReview with decision = Approve, rationale = "Clear"
+
+  Some finalCase <- queryContractId parties.opTeam cid
+  assertMsg "Status should be Ineligible" (finalCase.status == Ineligible)
+  debug "✓ Rejection path passed"
+
+-- | Double submit: custodian tries to submit twice → should fail.
+testDoubleSubmit : Script ()
+testDoubleSubmit = script do
+  parties <- allocateTestParties
+  cid <- createTestCase parties
+
+  cid <- submit parties.cust do
+    exerciseCmd cid SubmitCustodianReview with decision = Approve, rationale = "First"
+
+  submitMustFail parties.cust do
+    exerciseCmd cid SubmitCustodianReview with decision = Reject, rationale = "Second"
+
+  debug "✓ Double submit correctly rejected"
+
+-- | Wrong party: custodian tries to exercise legal choice → should fail.
+testWrongParty : Script ()
+testWrongParty = script do
+  parties <- allocateTestParties
+  cid <- createTestCase parties
+
+  submitMustFail parties.cust do
+    exerciseCmd cid SubmitLegalReview with decision = Approve, rationale = "Not my role"
+
+  debug "✓ Wrong party correctly rejected"
+
+-- | Partial state: only 1 reviewer submitted → still UnderReview.
+testPartialState : Script ()
+testPartialState = script do
+  parties <- allocateTestParties
+  cid <- createTestCase parties
+
+  cid <- submit parties.cust do
+    exerciseCmd cid SubmitCustodianReview with decision = Approve, rationale = "Verified"
+
+  Some partialCase <- queryContractId parties.opTeam cid
+  assertMsg "Status should be UnderReview" (partialCase.status == UnderReview)
+  debug "✓ Partial state passed"

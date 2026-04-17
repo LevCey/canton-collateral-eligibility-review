@@ -1,0 +1,121 @@
+-- | CollateralReview.Main: Privacy-aware collateral eligibility review workflow.
+--
+-- One Operating Team coordinates private inputs from Custodian, Legal Counsel,
+-- and Compliance Provider to produce a shared, auditable eligibility decision
+-- for a tokenized asset on Canton.
+module CollateralReview.Main where
+
+import DA.Optional (isNone)
+
+-- | Review status for the collateral eligibility case.
+data ReviewStatus = UnderReview | Eligible | Ineligible
+  deriving (Eq, Show)
+
+-- | Individual reviewer decision.
+data ReviewDecision = Approve | Reject
+  deriving (Eq, Show)
+
+-- | A reviewer's submitted input.
+data ReviewInput = ReviewInput
+  with
+    decision  : ReviewDecision
+    rationale : Text
+  deriving (Eq, Show)
+
+-- | An entry in the audit trail.
+data AuditEntry = AuditEntry
+  with
+    eventType : Text
+    actor     : Party
+    timestamp : Time
+  deriving (Eq, Show)
+
+-- | Compute the eligibility decision from reviewer inputs.
+-- All approve → Eligible, any reject → Ineligible, otherwise → UnderReview.
+computeDecision : Optional ReviewInput -> Optional ReviewInput -> Optional ReviewInput -> ReviewStatus
+computeDecision (Some c) (Some l) (Some p) =
+  if c.decision == Approve && l.decision == Approve && p.decision == Approve
+    then Eligible
+    else Ineligible
+computeDecision _ _ _ = UnderReview
+
+-- | Collateral eligibility review case for a tokenized asset.
+template CollateralReviewCase
+  with
+    operatingTeam      : Party
+    custodian          : Party
+    legalCounsel       : Party
+    complianceProvider : Party
+    assetId            : Text
+    assetType          : Text
+    issuer             : Text
+    maturity           : Text
+    coupon             : Text
+    status             : ReviewStatus
+    custodianInput     : Optional ReviewInput
+    legalInput         : Optional ReviewInput
+    complianceInput    : Optional ReviewInput
+    auditLog           : [AuditEntry]
+  where
+    signatory operatingTeam
+    observer custodian, legalCounsel, complianceProvider
+
+    -- | Custodian submits custody verification.
+    choice SubmitCustodianReview : ContractId CollateralReviewCase
+      with
+        decision  : ReviewDecision
+        rationale : Text
+      controller custodian
+      do
+        assertMsg "Custodian has already submitted" (isNone custodianInput)
+        now <- getTime
+        let input = ReviewInput with decision, rationale
+            newStatus = computeDecision (Some input) legalInput complianceInput
+            entry = AuditEntry with eventType = "CustodianSubmitted", actor = custodian, timestamp = now
+            decisionEntry = if newStatus /= UnderReview
+              then [AuditEntry with eventType = "Decision:" <> show newStatus, actor = operatingTeam, timestamp = now]
+              else []
+        create this with
+          custodianInput = Some input
+          status = newStatus
+          auditLog = auditLog ++ [entry] ++ decisionEntry
+
+    -- | Legal Counsel submits legal assessment.
+    choice SubmitLegalReview : ContractId CollateralReviewCase
+      with
+        decision  : ReviewDecision
+        rationale : Text
+      controller legalCounsel
+      do
+        assertMsg "Legal Counsel has already submitted" (isNone legalInput)
+        now <- getTime
+        let input = ReviewInput with decision, rationale
+            newStatus = computeDecision custodianInput (Some input) complianceInput
+            entry = AuditEntry with eventType = "LegalSubmitted", actor = legalCounsel, timestamp = now
+            decisionEntry = if newStatus /= UnderReview
+              then [AuditEntry with eventType = "Decision:" <> show newStatus, actor = operatingTeam, timestamp = now]
+              else []
+        create this with
+          legalInput = Some input
+          status = newStatus
+          auditLog = auditLog ++ [entry] ++ decisionEntry
+
+    -- | Compliance Provider submits compliance assessment.
+    choice SubmitComplianceReview : ContractId CollateralReviewCase
+      with
+        decision  : ReviewDecision
+        rationale : Text
+      controller complianceProvider
+      do
+        assertMsg "Compliance Provider has already submitted" (isNone complianceInput)
+        now <- getTime
+        let input = ReviewInput with decision, rationale
+            newStatus = computeDecision custodianInput legalInput (Some input)
+            entry = AuditEntry with eventType = "ComplianceSubmitted", actor = complianceProvider, timestamp = now
+            decisionEntry = if newStatus /= UnderReview
+              then [AuditEntry with eventType = "Decision:" <> show newStatus, actor = operatingTeam, timestamp = now]
+              else []
+        create this with
+          complianceInput = Some input
+          status = newStatus
+          auditLog = auditLog ++ [entry] ++ decisionEntry
