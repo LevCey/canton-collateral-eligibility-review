@@ -3,7 +3,6 @@ module Setup where
 import Daml.Script
 import CollateralReview.Main
 
--- | Allocate parties and create the demo review case.
 setup : Script ()
 setup = script do
   operatingTeam <- allocatePartyByHint (PartyIdHint "OperatingTeam")
@@ -23,7 +22,7 @@ setup = script do
 
   now <- getTime
 
-  submit operatingTeam do
+  caseCid <- submit operatingTeam do
     createCmd CollateralReviewCase with
       operatingTeam
       custodian
@@ -35,14 +34,9 @@ setup = script do
       maturity = "2027-06-15"
       coupon = "5.25%"
       status = UnderReview
-      custodianInput = None
-      legalInput = None
-      complianceInput = None
-      auditLog = [AuditEntry with eventType = "CaseCreated", actor = operatingTeam, timestamp = now]
+      auditLog = [AuditEntry "CaseCreated" operatingTeam now]
+
+  submit operatingTeam do exerciseCmd caseCid CreateReviewTasks
 
   debug "=== Collateral Review Setup Complete ==="
-  debug $ "OperatingTeam: " <> show operatingTeam
-  debug $ "Custodian: " <> show custodian
-  debug $ "LegalCounsel: " <> show legalCounsel
-  debug $ "ComplianceProvider: " <> show complianceProvider
   return ()

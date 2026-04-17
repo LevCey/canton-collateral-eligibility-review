@@ -2,7 +2,6 @@
 
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -30,19 +29,17 @@ USERS = {
     "compliance": os.getenv("USER_COMPLIANCE", "complianceprovider"),
 }
 
-TEMPLATE_MODULE = "CollateralReview.Main"
-TEMPLATE_ENTITY = "CollateralReviewCase"
+MOD = "CollateralReview.Main"
 
-ROLE_TO_CHOICE = {
-    "custodian": "SubmitCustodianReview",
-    "legal": "SubmitLegalReview",
-    "compliance": "SubmitComplianceReview",
+ROLE_TO_REVIEWER_ROLE = {
+    "custodian": "Custodian",
+    "legal": "LegalCounsel",
+    "compliance": "ComplianceProvider",
 }
 
 canton: CantonClient
 
 
-# --- Lifecycle ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global canton
@@ -65,19 +62,38 @@ class CreateCaseRequest(BaseModel):
 
 
 class SubmitReviewRequest(BaseModel):
-    role: str  # custodian | legal | compliance
-    decision: str  # approve | reject
+    role: str       # custodian | legal | compliance
+    decision: str   # approve | reject
     rationale: str
 
 
+class FinalizeRequest(BaseModel):
+    custodian_decision: str   # approve | reject
+    legal_decision: str
+    compliance_decision: str
+
+
 # --- Helpers ---
-def _parse_contract(item: dict) -> Optional[dict]:
-    """Extract contract data from Canton active-contracts response entry."""
-    entry = item.get("contractEntry", {})
-    key = next(iter(entry), None)
-    if not key:
+def _get_party(role: str) -> str:
+    role = role.lower()
+    p = PARTIES.get(role)
+    if not p:
+        raise HTTPException(400, f"Unknown role: {role}")
+    return p
+
+
+def _decision_str(d: str) -> str:
+    return "Approve" if d.lower() == "approve" else "Reject"
+
+
+def _short(party_id: str) -> str:
+    return party_id.split("::")[0] if "::" in party_id else party_id
+
+
+def _parse_case(item: dict) -> dict | None:
+    ce = _get_created_event(item)
+    if not ce:
         return None
-    ce = entry[key].get("createdEvent", {})
     args = ce.get("createArgument", {})
     return {
         "contract_id": ce.get("contractId", ""),
@@ -86,41 +102,65 @@ def _parse_contract(item: dict) -> Optional[dict]:
         "issuer": args.get("issuer", ""),
         "maturity": args.get("maturity", ""),
         "coupon": args.get("coupon", ""),
-        "status": args.get("status", ""),
-        "custodian_status": _input_status(args.get("custodianInput")),
-        "legal_status": _input_status(args.get("legalInput")),
-        "compliance_status": _input_status(args.get("complianceInput")),
+        "status": args.get("status", "UnderReview"),
         "audit_log": _parse_audit(args.get("auditLog", [])),
     }
 
 
-def _input_status(val) -> str:
-    if val is None or val == "None" or (isinstance(val, dict) and "None" in val):
-        return "pending"
-    # Daml Optional Some wraps as {"Some": {...}}
-    inner = val.get("Some", val) if isinstance(val, dict) else val
-    if isinstance(inner, dict):
-        d = inner.get("decision", "")
-        return "approved" if d == "Approve" else "rejected" if d == "Reject" else "pending"
-    return "pending"
+def _parse_task(item: dict) -> dict | None:
+    ce = _get_created_event(item)
+    if not ce:
+        return None
+    args = ce.get("createArgument", {})
+    return {
+        "contract_id": ce.get("contractId", ""),
+        "reviewer_role": args.get("reviewerRole", ""),
+        "asset_id": args.get("assetId", ""),
+        "asset_type": args.get("assetType", ""),
+        "issuer": args.get("issuer", ""),
+    }
+
+
+def _parse_result(item: dict) -> dict | None:
+    ce = _get_created_event(item)
+    if not ce:
+        return None
+    args = ce.get("createArgument", {})
+    return {
+        "contract_id": ce.get("contractId", ""),
+        "reviewer_role": args.get("reviewerRole", ""),
+        "decision": args.get("decision", ""),
+        "rationale": args.get("rationale", ""),
+        "submitted_at": args.get("submittedAt", ""),
+    }
+
+
+def _parse_decision(item: dict) -> dict | None:
+    ce = _get_created_event(item)
+    if not ce:
+        return None
+    args = ce.get("createArgument", {})
+    return {
+        "contract_id": ce.get("contractId", ""),
+        "asset_id": args.get("assetId", ""),
+        "status": args.get("status", ""),
+        "audit_log": _parse_audit(args.get("auditLog", [])),
+    }
+
+
+def _get_created_event(item: dict) -> dict | None:
+    entry = item.get("contractEntry", {})
+    key = next(iter(entry), None)
+    return entry[key].get("createdEvent", {}) if key else None
 
 
 def _parse_audit(entries) -> list[dict]:
     if not isinstance(entries, list):
         return []
-    result = []
-    for e in entries:
-        if isinstance(e, dict):
-            result.append({
-                "event_type": e.get("eventType", ""),
-                "actor": _short_party(e.get("actor", "")),
-                "timestamp": e.get("timestamp", ""),
-            })
-    return result
-
-
-def _short_party(party_id: str) -> str:
-    return party_id.split("::")[0] if "::" in party_id else party_id
+    return [
+        {"event_type": e.get("eventType", ""), "actor": _short(e.get("actor", "")), "timestamp": e.get("timestamp", "")}
+        for e in entries if isinstance(e, dict)
+    ]
 
 
 # --- Endpoints ---
@@ -130,72 +170,105 @@ async def health():
 
 
 @app.get("/cases")
-async def list_cases(role: str = "operatingteam"):
-    role = role.lower()
-    party = PARTIES.get(role)
-    if not party:
-        raise HTTPException(400, f"Unknown role: {role}. Valid: operatingteam, custodian, legal, compliance")
-    raw = await canton.query_contracts(party, TEMPLATE_MODULE, TEMPLATE_ENTITY)
-    cases = [c for item in raw if (c := _parse_contract(item)) is not None]
-    return {"cases": cases}
+async def list_cases():
+    """List active review cases (Operating Team view)."""
+    party = _get_party("operatingteam")
+    raw = await canton.query_contracts(party, MOD, "CollateralReviewCase")
+    return {"cases": [c for item in raw if (c := _parse_case(item))]}
 
 
 @app.post("/cases")
 async def create_case(req: CreateCaseRequest):
-    party = PARTIES["operatingteam"]
+    """Create a new review case and its reviewer tasks."""
+    party = _get_party("operatingteam")
     user = USERS["operatingteam"]
     payload = {
         "operatingTeam": party,
         "custodian": PARTIES["custodian"],
         "legalCounsel": PARTIES["legal"],
         "complianceProvider": PARTIES["compliance"],
-        "assetId": req.asset_id,
-        "assetType": req.asset_type,
-        "issuer": req.issuer,
-        "maturity": req.maturity,
-        "coupon": req.coupon,
+        "assetId": req.asset_id, "assetType": req.asset_type,
+        "issuer": req.issuer, "maturity": req.maturity, "coupon": req.coupon,
         "status": "UnderReview",
-        "custodianInput": None,
-        "legalInput": None,
-        "complianceInput": None,
         "auditLog": [{"eventType": "CaseCreated", "actor": party, "timestamp": "1970-01-01T00:00:00Z"}],
     }
     try:
-        result = await canton.create_contract(user, [party], TEMPLATE_MODULE, TEMPLATE_ENTITY, payload)
-        return {"success": True, "transaction": result}
+        result = await canton.create_contract(user, [party], MOD, "CollateralReviewCase", payload)
+        # Extract case contract ID and create review tasks
+        events = _extract_events(result)
+        case_cid = events[0]["contractId"] if events else None
+        if case_cid:
+            await canton.exercise_choice(user, [party], case_cid, MOD, "CollateralReviewCase", "CreateReviewTasks", {})
+        return {"success": True, "case_contract_id": case_cid}
     except Exception as e:
         raise HTTPException(502, str(e))
 
 
-@app.post("/cases/{contract_id}/review")
+@app.get("/tasks")
+async def list_tasks(role: str):
+    """List pending review tasks for a specific reviewer role."""
+    party = _get_party(role)
+    user = USERS.get(role.lower())
+    raw = await canton.query_contracts(party, MOD, "ReviewTask")
+    return {"tasks": [t for item in raw if (t := _parse_task(item))]}
+
+
+@app.post("/tasks/{contract_id}/review")
 async def submit_review(contract_id: str, req: SubmitReviewRequest):
+    """Submit a review on a task contract."""
     role = req.role.lower()
-    choice = ROLE_TO_CHOICE.get(role)
-    if not choice:
-        raise HTTPException(400, f"Invalid role: {role}. Must be custodian, legal, or compliance.")
-    party = PARTIES.get(role)
+    party = _get_party(role)
     user = USERS.get(role)
-    if not party or not user:
-        raise HTTPException(400, f"Party not configured for role: {role}")
-    decision = "Approve" if req.decision.lower() == "approve" else "Reject"
+    if not user:
+        raise HTTPException(400, f"No user configured for role: {role}")
     try:
         result = await canton.exercise_choice(
-            user, [party], contract_id, TEMPLATE_MODULE, TEMPLATE_ENTITY, choice,
-            {"decision": decision, "rationale": req.rationale},
+            user, [party], contract_id, MOD, "ReviewTask", "SubmitReview",
+            {"decision": _decision_str(req.decision), "rationale": req.rationale},
         )
         return {"success": True, "transaction": result}
     except Exception as e:
         raise HTTPException(502, str(e))
 
 
-@app.get("/cases/{contract_id}/audit")
-async def get_audit(contract_id: str, role: str = "operatingteam"):
-    party = PARTIES.get(role)
-    if not party:
-        raise HTTPException(400, f"Unknown role: {role}")
-    raw = await canton.query_contracts(party, TEMPLATE_MODULE, TEMPLATE_ENTITY)
-    for item in raw:
-        c = _parse_contract(item)
-        if c and c["contract_id"] == contract_id:
-            return {"audit_log": c["audit_log"]}
-    raise HTTPException(404, "Case not found")
+@app.get("/results")
+async def list_results(role: str = "operatingteam"):
+    """List submitted review results (visible to OpTeam and the submitting reviewer)."""
+    party = _get_party(role)
+    raw = await canton.query_contracts(party, MOD, "ReviewResult")
+    return {"results": [r for item in raw if (r := _parse_result(item))]}
+
+
+@app.post("/cases/{contract_id}/finalize")
+async def finalize_decision(contract_id: str, req: FinalizeRequest):
+    """Finalize the eligibility decision (Operating Team only)."""
+    party = _get_party("operatingteam")
+    user = USERS["operatingteam"]
+    try:
+        result = await canton.exercise_choice(
+            user, [party], contract_id, MOD, "CollateralReviewCase", "FinalizeDecision",
+            {
+                "custodianDecision": _decision_str(req.custodian_decision),
+                "legalDecision": _decision_str(req.legal_decision),
+                "complianceDecision": _decision_str(req.compliance_decision),
+            },
+        )
+        return {"success": True, "transaction": result}
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/decision")
+async def get_decision(role: str = "operatingteam"):
+    """Get the final eligibility decision (visible to all parties)."""
+    party = _get_party(role)
+    raw = await canton.query_contracts(party, MOD, "EligibilityDecision")
+    decisions = [d for item in raw if (d := _parse_decision(item))]
+    return {"decisions": decisions}
+
+
+def _extract_events(tx_result: dict) -> list[dict]:
+    """Extract created events from a transaction result."""
+    tx = tx_result.get("transaction", {})
+    events = tx.get("events", [])
+    return [e.get("CreatedEvent", e) for e in events if "CreatedEvent" in e or "contractId" in e]
