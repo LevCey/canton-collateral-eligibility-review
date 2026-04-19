@@ -1,6 +1,7 @@
 """Canton JSON Ledger API v2 client."""
 
 import httpx
+import uuid
 from typing import Any
 
 
@@ -15,6 +16,9 @@ class CantonClient:
     def _template_id(self, module: str, entity: str) -> str:
         return f"#{self.package_name}:{module}:{entity}"
 
+    def _command_id(self) -> str:
+        return str(uuid.uuid4())[:8]
+
     async def get_ledger_end(self) -> int:
         r = await self.http.get("/v2/state/ledger-end")
         r.raise_for_status()
@@ -24,16 +28,19 @@ class CantonClient:
         self, user_id: str, act_as: list[str], template_module: str, template_entity: str, payload: dict[str, Any]
     ) -> dict:
         body = {
-            "userId": user_id,
-            "actAs": act_as,
-            "commands": [
-                {
-                    "CreateCommand": {
-                        "templateId": self._template_id(template_module, template_entity),
-                        "createArguments": payload,
+            "commands": {
+                "userId": user_id,
+                "commandId": self._command_id(),
+                "actAs": act_as,
+                "commands": [
+                    {
+                        "CreateCommand": {
+                            "templateId": self._template_id(template_module, template_entity),
+                            "createArguments": payload,
+                        }
                     }
-                }
-            ],
+                ],
+            }
         }
         r = await self.http.post("/v2/commands/submit-and-wait-for-transaction", json=body)
         r.raise_for_status()
@@ -43,18 +50,21 @@ class CantonClient:
         self, user_id: str, act_as: list[str], contract_id: str, template_module: str, template_entity: str, choice: str, args: dict[str, Any]
     ) -> dict:
         body = {
-            "userId": user_id,
-            "actAs": act_as,
-            "commands": [
-                {
-                    "ExerciseCommand": {
-                        "templateId": self._template_id(template_module, template_entity),
-                        "contractId": contract_id,
-                        "choice": choice,
-                        "choiceArgument": args,
+            "commands": {
+                "userId": user_id,
+                "commandId": self._command_id(),
+                "actAs": act_as,
+                "commands": [
+                    {
+                        "ExerciseCommand": {
+                            "templateId": self._template_id(template_module, template_entity),
+                            "contractId": contract_id,
+                            "choice": choice,
+                            "choiceArgument": args,
+                        }
                     }
-                }
-            ],
+                ],
+            }
         }
         r = await self.http.post("/v2/commands/submit-and-wait-for-transaction", json=body)
         r.raise_for_status()
