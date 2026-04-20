@@ -11,7 +11,7 @@ class CantonClient:
     def __init__(self, base_url: str, package_name: str):
         self.base_url = base_url.rstrip("/")
         self.package_name = package_name
-        self.http = httpx.AsyncClient(base_url=self.base_url, timeout=30.0)
+        self.http = httpx.AsyncClient(base_url=self.base_url, timeout=60.0)
 
     def _template_id(self, module: str, entity: str) -> str:
         return f"#{self.package_name}:{module}:{entity}"
