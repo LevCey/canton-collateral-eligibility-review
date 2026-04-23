@@ -39,26 +39,9 @@ export default function ReviewerView({ role }) {
     refresh()
   }
 
-  const decision = decisions[0]
-
-  if (decision) {
-    return (
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold" style={{ color: role === 'custodian' ? '#34d399' : role === 'legal' ? '#fbbf24' : '#a78bfa' }}>
-          {meta.label} View
-        </h2>
-        <div className="p-6 rounded-xl border border-gray-700 bg-gray-800/50">
-          <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold">{decision.asset_id}</div>
-            <StatusBadge status={decision.status} />
-          </div>
-          <p className="text-sm text-gray-400 mt-2">Final eligibility decision has been issued.</p>
-        </div>
-      </div>
-    )
-  }
-
   const task = tasks[0]
+  // Show task if available (new case), even if old decisions exist
+  const decision = !task && !submitted ? decisions[0] : null
 
   return (
     <div className="space-y-4">
@@ -66,7 +49,15 @@ export default function ReviewerView({ role }) {
         {meta.label} View
       </h2>
 
-      {submitted ? (
+      {decision ? (
+        <div className="p-6 rounded-xl border border-gray-700 bg-gray-800/50">
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold">{decision.asset_id}</div>
+            <StatusBadge status={decision.status} />
+          </div>
+          <p className="text-sm text-gray-400 mt-2">Final eligibility decision has been issued.</p>
+        </div>
+      ) : submitted ? (
         <div className="p-6 rounded-xl border border-green-500/30 bg-green-500/10 text-center">
           <div className="text-2xl mb-2">✓</div>
           <div className="font-semibold text-green-400">Review Submitted</div>

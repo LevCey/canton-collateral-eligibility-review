@@ -62,7 +62,8 @@ export default function OperatingTeamView() {
   }
 
   const activeCase = cases[0]
-  const decision = decisions[0]
+  // Show active case over old decisions (reset creates new case while old decision persists)
+  const decision = !activeCase ? decisions[0] : null
   const allSubmitted = results.length >= 3
 
   return (
