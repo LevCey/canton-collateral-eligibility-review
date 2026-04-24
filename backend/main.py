@@ -14,7 +14,7 @@ load_dotenv()
 
 # --- Config ---
 CANTON_URL = os.getenv("CANTON_LEDGER_API_URL", "http://localhost:7575")
-PKG = os.getenv("CANTON_PACKAGE_NAME", "collateral-eligibility-review")
+PKG = os.getenv("CANTON_PACKAGE_NAME", "collateral-review")
 
 PARTIES = {
     "operatingteam": os.getenv("PARTY_OPERATING_TEAM", ""),

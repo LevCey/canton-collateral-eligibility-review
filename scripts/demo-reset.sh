@@ -10,7 +10,7 @@
 set -euo pipefail
 
 API="${CANTON_LEDGER_API_URL:-http://localhost:7575}"
-PKG="${CANTON_PACKAGE_NAME:-collateral-eligibility-review}"
+PKG="${CANTON_PACKAGE_NAME:-collateral-review}"
 
 # Party suffix (same participant)
 S="::122031dacd1d842e4499cf58bc1391ec402816ebc0edf2a240b0ff9322f7e7b97a3a"
