@@ -7,6 +7,7 @@ const post = (path, body) => fetch(`${API}${path}`, {
 
 export const api = {
   health: () => get('/health'),
+  network: () => get('/network'),
   listCases: () => get('/cases'),
   createCase: (data) => post('/cases', data),
   listTasks: (role) => get(`/tasks?role=${role}`),

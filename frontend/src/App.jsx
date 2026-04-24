@@ -2,6 +2,7 @@ import { useState } from 'react'
 import RoleSwitcher from './components/RoleSwitcher'
 import OperatingTeamView from './components/OperatingTeamView'
 import ReviewerView from './components/ReviewerView'
+import NetworkBanner from './components/NetworkBanner'
 
 export default function App() {
   const [role, setRole] = useState('operatingteam')
@@ -20,6 +21,7 @@ export default function App() {
       <main className="max-w-4xl mx-auto px-6 py-8">
         {role === 'operatingteam' ? <OperatingTeamView /> : <ReviewerView role={role} />}
       </main>
+      <NetworkBanner />
     </div>
   )
 }

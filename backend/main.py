@@ -145,6 +145,8 @@ def _parse_decision(item: dict) -> dict | None:
         "asset_id": args.get("assetId", ""),
         "status": args.get("status", ""),
         "audit_log": _parse_audit(args.get("auditLog", [])),
+        "ledger_offset": ce.get("offset"),
+        "created_at": ce.get("createdAt", ""),
     }
 
 
@@ -167,6 +169,16 @@ def _parse_audit(entries) -> list[dict]:
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/network")
+async def network_info():
+    """Return Canton DevNet connection info for UI display."""
+    try:
+        offset = await canton.get_ledger_end()
+        return {"network": "Canton DevNet", "ledger_offset": offset, "participant": "amlprediction-validator-1", "connected": True}
+    except Exception:
+        return {"network": "Canton DevNet", "connected": False}
 
 
 @app.get("/cases")

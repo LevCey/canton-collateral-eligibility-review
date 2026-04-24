@@ -80,6 +80,11 @@ export default function OperatingTeamView() {
               </div>
               <StatusBadge status={decision.status} />
             </div>
+            <div className="text-xs text-gray-600 font-mono space-y-1">
+              <div>Contract: {decision.contract_id?.slice(0, 32)}…</div>
+              {decision.ledger_offset && <div>Ledger offset: {decision.ledger_offset}</div>}
+              {decision.created_at && <div>Recorded: {new Date(decision.created_at).toLocaleString()}</div>}
+            </div>
           </div>
           <AuditTrail entries={decision.audit_log || []} />
         </div>
