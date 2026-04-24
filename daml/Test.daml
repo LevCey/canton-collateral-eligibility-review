@@ -17,119 +17,112 @@ allocateTestParties = script do
   comp <- allocateParty "ComplianceProvider"
   return TestParties with ..
 
--- | Helper: create case + review tasks.
 createCaseWithTasks : TestParties -> Script (ContractId CollateralReviewCase, ContractId ReviewTask, ContractId ReviewTask, ContractId ReviewTask)
 createCaseWithTasks TestParties{..} = do
   now <- getTime
   caseCid <- submit opTeam do
     createCmd CollateralReviewCase with
-      operatingTeam = opTeam
-      custodian = cust
-      legalCounsel = legal
-      complianceProvider = comp
-      assetId = "PCN-TEST-001"
-      assetType = "Private Credit Note"
-      issuer = "Test Issuer"
-      maturity = "2027-01-01"
-      coupon = "5.00%"
-      status = UnderReview
+      operatingTeam = opTeam, custodian = cust, legalCounsel = legal, complianceProvider = comp
+      assetId = "PCN-TEST-001", assetType = "Private Credit Note", issuer = "Test Issuer"
+      maturity = "2027-01-01", coupon = "5.00%", status = UnderReview
       auditLog = [AuditEntry "CaseCreated" opTeam now]
-  (custTask, legalTask, compTask) <- submit opTeam do
-    exerciseCmd caseCid CreateReviewTasks
+  (custTask, legalTask, compTask) <- submit opTeam do exerciseCmd caseCid CreateReviewTasks
   return (caseCid, custTask, legalTask, compTask)
 
--- | Happy path: all approve → Eligible.
+-- | Submit all 3 reviews and return result CIDs.
+submitAllApprovals : TestParties -> (ContractId ReviewTask, ContractId ReviewTask, ContractId ReviewTask) -> Script (ContractId ReviewResult, ContractId ReviewResult, ContractId ReviewResult)
+submitAllApprovals TestParties{..} (custTask, legalTask, compTask) = do
+  custResult <- submit cust do exerciseCmd custTask SubmitReview with decision = Approve, rationale = "OK"
+  legalResult <- submit legal do exerciseCmd legalTask SubmitReview with decision = Approve, rationale = "OK"
+  compResult <- submit comp do exerciseCmd compTask SubmitReview with decision = Approve, rationale = "OK"
+  return (custResult, legalResult, compResult)
+
+-- | 1. Happy path: all 3 approve → Eligible.
 testHappyPath : Script ()
 testHappyPath = script do
   parties@TestParties{..} <- allocateTestParties
   (caseCid, custTask, legalTask, compTask) <- createCaseWithTasks parties
-
-  -- Each reviewer submits on their own task (can't see others)
-  custResult <- submit cust do
-    exerciseCmd custTask SubmitReview with decision = Approve, rationale = "Collateral verified"
-  legalResult <- submit legal do
-    exerciseCmd legalTask SubmitReview with decision = Approve, rationale = "Legal form acceptable"
-  compResult <- submit comp do
-    exerciseCmd compTask SubmitReview with decision = Approve, rationale = "Review clear"
-
-  -- Operating Team finalizes
+  (custR, legalR, compR) <- submitAllApprovals parties (custTask, legalTask, compTask)
   decisionCid <- submit opTeam do
     exerciseCmd caseCid FinalizeDecision with
-      custodianDecision = Approve
-      legalDecision = Approve
-      complianceDecision = Approve
-
+      custodianResultCid = custR, legalResultCid = legalR, complianceResultCid = compR
   Some decision <- queryContractId opTeam decisionCid
   assertMsg "Should be Eligible" (decision.status == Eligible)
   assertMsg "Audit log should have 5 entries" (length decision.auditLog == 5)
   debug "✓ Happy path passed"
 
--- | Rejection: one rejects → Ineligible.
+-- | 2. Rejection: one rejects → Ineligible.
 testRejection : Script ()
 testRejection = script do
   parties@TestParties{..} <- allocateTestParties
   (caseCid, custTask, legalTask, compTask) <- createCaseWithTasks parties
-
-  submit cust do exerciseCmd custTask SubmitReview with decision = Approve, rationale = "OK"
-  submit legal do exerciseCmd legalTask SubmitReview with decision = Reject, rationale = "Jurisdiction issue"
-  submit comp do exerciseCmd compTask SubmitReview with decision = Approve, rationale = "Clear"
-
+  custR <- submit cust do exerciseCmd custTask SubmitReview with decision = Approve, rationale = "OK"
+  legalR <- submit legal do exerciseCmd legalTask SubmitReview with decision = Reject, rationale = "Jurisdiction issue"
+  compR <- submit comp do exerciseCmd compTask SubmitReview with decision = Approve, rationale = "OK"
   decisionCid <- submit opTeam do
     exerciseCmd caseCid FinalizeDecision with
-      custodianDecision = Approve, legalDecision = Reject, complianceDecision = Approve
-
+      custodianResultCid = custR, legalResultCid = legalR, complianceResultCid = compR
   Some decision <- queryContractId opTeam decisionCid
   assertMsg "Should be Ineligible" (decision.status == Ineligible)
   debug "✓ Rejection path passed"
 
--- | Wrong party: custodian cannot exercise legal's task.
+-- | 3. Wrong party: custodian cannot exercise legal's task.
 testWrongParty : Script ()
 testWrongParty = script do
   parties@TestParties{..} <- allocateTestParties
   (_, _, legalTask, _) <- createCaseWithTasks parties
-
-  submitMustFail cust do
-    exerciseCmd legalTask SubmitReview with decision = Approve, rationale = "Not my role"
+  submitMustFail cust do exerciseCmd legalTask SubmitReview with decision = Approve, rationale = "Not my role"
   debug "✓ Wrong party correctly rejected"
 
--- | Privacy: custodian cannot see legal's task contract.
+-- | 4. Privacy: custodian cannot see legal's task.
 testPrivacy : Script ()
 testPrivacy = script do
   parties@TestParties{..} <- allocateTestParties
   (_, _, legalTask, _) <- createCaseWithTasks parties
-
-  -- Custodian should NOT be able to query legal's task
-  visibleToCustomer <- queryContractId cust legalTask
-  assertMsg "Custodian should not see legal task" (visibleToCustomer == None)
+  visibleToCust <- queryContractId cust legalTask
+  assertMsg "Custodian should not see legal task" (visibleToCust == None)
   debug "✓ Privacy: custodian cannot see legal's task"
 
--- | Privacy: reviewer cannot see the orchestrator case.
+-- | 5. Reviewer cannot see the orchestrator case.
 testReviewerCannotSeeCase : Script ()
 testReviewerCannotSeeCase = script do
   parties@TestParties{..} <- allocateTestParties
   (caseCid, _, _, _) <- createCaseWithTasks parties
-
   visibleToCust <- queryContractId cust caseCid
   assertMsg "Custodian should not see the case contract" (visibleToCust == None)
   debug "✓ Privacy: reviewer cannot see orchestrator case"
 
--- | Final decision visible to all parties.
+-- | 6. Final decision visible to all parties.
 testDecisionVisibility : Script ()
 testDecisionVisibility = script do
   parties@TestParties{..} <- allocateTestParties
   (caseCid, custTask, legalTask, compTask) <- createCaseWithTasks parties
-
-  submit cust do exerciseCmd custTask SubmitReview with decision = Approve, rationale = "OK"
-  submit legal do exerciseCmd legalTask SubmitReview with decision = Approve, rationale = "OK"
-  submit comp do exerciseCmd compTask SubmitReview with decision = Approve, rationale = "OK"
-
+  (custR, legalR, compR) <- submitAllApprovals parties (custTask, legalTask, compTask)
   decisionCid <- submit opTeam do
     exerciseCmd caseCid FinalizeDecision with
-      custodianDecision = Approve, legalDecision = Approve, complianceDecision = Approve
-
-  -- All parties should see the final decision
+      custodianResultCid = custR, legalResultCid = legalR, complianceResultCid = compR
   Some _ <- queryContractId opTeam decisionCid
   Some _ <- queryContractId cust decisionCid
   Some _ <- queryContractId legal decisionCid
   Some _ <- queryContractId comp decisionCid
   debug "✓ Decision visible to all parties"
+
+-- | 7. Double submit: reviewer tries to submit twice → fails.
+testDoubleSubmit : Script ()
+testDoubleSubmit = script do
+  parties@TestParties{..} <- allocateTestParties
+  (_, custTask, _, _) <- createCaseWithTasks parties
+  submit cust do exerciseCmd custTask SubmitReview with decision = Approve, rationale = "First"
+  -- Task is consumed after first submit, second attempt should fail
+  submitMustFail cust do exerciseCmd custTask SubmitReview with decision = Reject, rationale = "Second"
+  debug "✓ Double submit correctly rejected"
+
+-- | 8. Partial state: only 1 reviewer submitted → case still Under Review.
+testPartialState : Script ()
+testPartialState = script do
+  parties@TestParties{..} <- allocateTestParties
+  (caseCid, custTask, _, _) <- createCaseWithTasks parties
+  submit cust do exerciseCmd custTask SubmitReview with decision = Approve, rationale = "OK"
+  Some partialCase <- queryContractId opTeam caseCid
+  assertMsg "Status should still be UnderReview" (partialCase.status == UnderReview)
+  debug "✓ Partial state: case remains Under Review"

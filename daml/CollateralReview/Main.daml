@@ -109,23 +109,37 @@ template CollateralReviewCase
           caseRef = assetId, assetId, assetType, issuer
         return (custTask, legalTask, compTask)
 
-    -- | Finalize the decision based on submitted ReviewResults.
+    -- | Finalize the decision by fetching and consuming actual ReviewResult contracts.
+    -- The Operating Team must provide the contract IDs of the three submitted results.
+    -- Decisions are read from the ledger, not from user input.
     choice FinalizeDecision : ContractId EligibilityDecision
       with
-        custodianDecision  : ReviewDecision
-        legalDecision      : ReviewDecision
-        complianceDecision : ReviewDecision
+        custodianResultCid  : ContractId ReviewResult
+        legalResultCid      : ContractId ReviewResult
+        complianceResultCid : ContractId ReviewResult
       controller operatingTeam
       do
+        custResult <- fetch custodianResultCid
+        assertMsg "Custodian result must match this case" (custResult.caseRef == assetId)
+        assertMsg "Custodian result must be from custodian" (custResult.reviewer == custodian)
+
+        legalResult <- fetch legalResultCid
+        assertMsg "Legal result must match this case" (legalResult.caseRef == assetId)
+        assertMsg "Legal result must be from legal counsel" (legalResult.reviewer == legalCounsel)
+
+        compResult <- fetch complianceResultCid
+        assertMsg "Compliance result must match this case" (compResult.caseRef == assetId)
+        assertMsg "Compliance result must be from compliance provider" (compResult.reviewer == complianceProvider)
+
         now <- getTime
         let finalStatus =
-              if custodianDecision == Approve && legalDecision == Approve && complianceDecision == Approve
+              if custResult.decision == Approve && legalResult.decision == Approve && compResult.decision == Approve
                 then Eligible
                 else Ineligible
             newLog = auditLog <>
-              [ AuditEntry "CustodianResult" custodian now
-              , AuditEntry "LegalResult" legalCounsel now
-              , AuditEntry "ComplianceResult" complianceProvider now
+              [ AuditEntry ("CustodianResult:" <> show custResult.decision) custodian now
+              , AuditEntry ("LegalResult:" <> show legalResult.decision) legalCounsel now
+              , AuditEntry ("ComplianceResult:" <> show compResult.decision) complianceProvider now
               , AuditEntry ("Decision:" <> show finalStatus) operatingTeam now
               ]
         create EligibilityDecision with

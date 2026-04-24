@@ -68,9 +68,9 @@ class SubmitReviewRequest(BaseModel):
 
 
 class FinalizeRequest(BaseModel):
-    custodian_decision: str   # approve | reject
-    legal_decision: str
-    compliance_decision: str
+    custodian_result_cid: str
+    legal_result_cid: str
+    compliance_result_cid: str
 
 
 # --- Helpers ---
@@ -241,16 +241,16 @@ async def list_results(role: str = "operatingteam"):
 
 @app.post("/cases/{contract_id}/finalize")
 async def finalize_decision(contract_id: str, req: FinalizeRequest):
-    """Finalize the eligibility decision (Operating Team only)."""
+    """Finalize the eligibility decision using actual ReviewResult contract IDs."""
     party = _get_party("operatingteam")
     user = USERS["operatingteam"]
     try:
         result = await canton.exercise_choice(
             user, [party], contract_id, MOD, "CollateralReviewCase", "FinalizeDecision",
             {
-                "custodianDecision": _decision_str(req.custodian_decision),
-                "legalDecision": _decision_str(req.legal_decision),
-                "complianceDecision": _decision_str(req.compliance_decision),
+                "custodianResultCid": req.custodian_result_cid,
+                "legalResultCid": req.legal_result_cid,
+                "complianceResultCid": req.compliance_result_cid,
             },
         )
         return {"success": True, "transaction": result}
