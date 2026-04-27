@@ -25,9 +25,10 @@ createCaseWithTasks TestParties{..} = do
       operatingTeam = opTeam, custodian = cust, legalCounsel = legal, complianceProvider = comp
       assetId = "PCN-TEST-001", assetType = "Private Credit Note", issuer = "Test Issuer"
       maturity = "2027-01-01", coupon = "5.00%", status = UnderReview
+      tasksCreated = False
       auditLog = [AuditEntry "CaseCreated" opTeam now]
-  (custTask, legalTask, compTask) <- submit opTeam do exerciseCmd caseCid CreateReviewTasks
-  return (caseCid, custTask, legalTask, compTask)
+  (caseCid', custTask, legalTask, compTask) <- submit opTeam do exerciseCmd caseCid CreateReviewTasks
+  return (caseCid', custTask, legalTask, compTask)
 
 -- | Submit all 3 reviews and return result CIDs.
 submitAllApprovals : TestParties -> (ContractId ReviewTask, ContractId ReviewTask, ContractId ReviewTask) -> Script (ContractId ReviewResult, ContractId ReviewResult, ContractId ReviewResult)
@@ -126,3 +127,12 @@ testPartialState = script do
   Some partialCase <- queryContractId opTeam caseCid
   assertMsg "Status should still be UnderReview" (partialCase.status == UnderReview)
   debug "✓ Partial state: case remains Under Review"
+
+-- | 9. Duplicate CreateReviewTasks → fails.
+testDuplicateCreateTasks : Script ()
+testDuplicateCreateTasks = script do
+  parties@TestParties{..} <- allocateTestParties
+  (caseCid, _, _, _) <- createCaseWithTasks parties
+  -- tasksCreated is now True, second call should fail
+  submitMustFail opTeam do exerciseCmd caseCid CreateReviewTasks
+  debug "✓ Duplicate CreateReviewTasks correctly rejected"

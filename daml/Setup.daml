@@ -34,6 +34,7 @@ setup = script do
       maturity = "2027-06-15"
       coupon = "5.25%"
       status = UnderReview
+      tasksCreated = False
       auditLog = [AuditEntry "CaseCreated" operatingTeam now]
 
   submit operatingTeam do exerciseCmd caseCid CreateReviewTasks

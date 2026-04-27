@@ -2,6 +2,7 @@
 
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -202,7 +203,8 @@ async def create_case(req: CreateCaseRequest):
         "assetId": req.asset_id, "assetType": req.asset_type,
         "issuer": req.issuer, "maturity": req.maturity, "coupon": req.coupon,
         "status": "UnderReview",
-        "auditLog": [{"eventType": "CaseCreated", "actor": party, "timestamp": "1970-01-01T00:00:00Z"}],
+        "tasksCreated": False,
+        "auditLog": [{"eventType": "CaseCreated", "actor": party, "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}],
     }
     try:
         result = await canton.create_contract(user, [party], MOD, "CollateralReviewCase", payload)
@@ -210,7 +212,10 @@ async def create_case(req: CreateCaseRequest):
         events = _extract_events(result)
         case_cid = events[0]["contractId"] if events else None
         if case_cid:
-            await canton.exercise_choice(user, [party], case_cid, MOD, "CollateralReviewCase", "CreateReviewTasks", {})
+            task_result = await canton.exercise_choice(user, [party], case_cid, MOD, "CollateralReviewCase", "CreateReviewTasks", {})
+            # CreateReviewTasks is now consuming — returns new case CID + 3 tasks
+            task_events = _extract_events(task_result)
+            case_cid = task_events[0]["contractId"] if task_events else case_cid
         return {"success": True, "case_contract_id": case_cid}
     except Exception as e:
         raise HTTPException(502, str(e))

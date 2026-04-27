@@ -89,15 +89,16 @@ template CollateralReviewCase
     maturity           : Text
     coupon             : Text
     status             : ReviewStatus
+    tasksCreated       : Bool
     auditLog           : [AuditEntry]
   where
     signatory operatingTeam
 
-    -- | Create the three reviewer task contracts.
-    nonconsuming choice CreateReviewTasks : (ContractId ReviewTask, ContractId ReviewTask, ContractId ReviewTask)
+    -- | Create the three reviewer task contracts. Can only be called once.
+    choice CreateReviewTasks : (ContractId CollateralReviewCase, ContractId ReviewTask, ContractId ReviewTask, ContractId ReviewTask)
       controller operatingTeam
       do
-        let base = (operatingTeam, assetId, assetType, issuer)
+        assertMsg "Review tasks already created" (not tasksCreated)
         custTask <- create ReviewTask with
           operatingTeam, reviewer = custodian, reviewerRole = "Custodian"
           caseRef = assetId, assetId, assetType, issuer
@@ -107,7 +108,8 @@ template CollateralReviewCase
         compTask <- create ReviewTask with
           operatingTeam, reviewer = complianceProvider, reviewerRole = "ComplianceProvider"
           caseRef = assetId, assetId, assetType, issuer
-        return (custTask, legalTask, compTask)
+        updatedCase <- create this with tasksCreated = True
+        return (updatedCase, custTask, legalTask, compTask)
 
     -- | Finalize the decision by fetching and consuming actual ReviewResult contracts.
     -- The Operating Team must provide the contract IDs of the three submitted results.

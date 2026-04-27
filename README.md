@@ -76,7 +76,7 @@ Privacy guarantees are enforced on-ledger and verified by Daml tests.
 
 ## Daml Tests
 
-8 passing tests covering workflow logic and privacy:
+9 passing tests covering workflow logic and privacy:
 
 | Test | What It Proves |
 |------|---------------|
@@ -88,6 +88,7 @@ Privacy guarantees are enforced on-ledger and verified by Daml tests.
 | `testReviewerCannotSeeCase` | Reviewer cannot see orchestrator |
 | `testDecisionVisibility` | Final decision visible to all |
 | `testPartialState` | Partial submissions → Under Review |
+| `testDuplicateCreateTasks` | Cannot create review tasks twice |
 
 ## Quick Start
 
@@ -131,6 +132,16 @@ This workflow depends on properties that are difficult to reproduce elsewhere:
 - **Multi-party coordination** — one team coordinates multiple private reviewers
 - **Shared state** — all parties rely on the same eligibility decision
 - **Auditability** — the full decision lifecycle is recorded on-ledger
+
+## Known Limitations
+
+This is a hackathon MVP. The following are known simplifications:
+
+- **No frontend authentication.** The role switcher is a demo tool. Real privacy is enforced by Canton's party model on-ledger, not by the UI. Production would use per-party auth (JWT/mTLS).
+- **Backend role-to-party mapping is a demo simplification.** The backend submits commands on behalf of parties based on role name. Production would require each party to authenticate independently.
+- **No historical case management.** Multiple demo resets leave old contracts on the ledger. The frontend prioritizes active cases/tasks, but a clean environment is recommended for demos.
+- **Demo-grade error handling.** Failed Canton calls return generic 502 errors. Production would need structured error responses and retry logic.
+- **No document upload, notifications, or exception workflows.** The MVP covers the core review-and-decide flow only.
 
 ## Track
 
