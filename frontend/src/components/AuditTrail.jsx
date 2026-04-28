@@ -13,6 +13,20 @@ export default function AuditTrail({ entries = [] }) {
     return 'bg-gray-500'
   }
 
+  const friendlyLabel = (type) => {
+    if (type === 'CaseCreated') return 'Case created'
+    if (type === 'Decision:Eligible') return 'Decision finalized — Eligible'
+    if (type === 'Decision:Ineligible') return 'Decision finalized — Ineligible'
+    if (type.includes('Custodian') && type.includes('Approve')) return 'Custodian approved'
+    if (type.includes('Custodian') && type.includes('Reject')) return 'Custodian rejected'
+    if (type.includes('Legal') && type.includes('Approve')) return 'Legal counsel approved'
+    if (type.includes('Legal') && type.includes('Reject')) return 'Legal counsel rejected'
+    if (type.includes('Compliance') && type.includes('Approve')) return 'Compliance approved'
+    if (type.includes('Compliance') && type.includes('Reject')) return 'Compliance rejected'
+    if (type.includes('Result')) return type.replace('Result', ' reviewed')
+    return type
+  }
+
   return (
     <div className="p-5 rounded-xl border border-gray-700/50 bg-gray-800/30">
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Audit Trail</h3>
@@ -23,7 +37,7 @@ export default function AuditTrail({ entries = [] }) {
             <div key={i} className="flex items-start gap-4 relative">
               <div className={`w-[15px] h-[15px] rounded-full ${getColor(e.event_type)} shrink-0 mt-0.5 ring-2 ring-gray-900`} />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-200">{e.event_type}</div>
+                <div className="text-sm font-medium text-gray-200">{friendlyLabel(e.event_type)}</div>
                 <div className="text-xs text-gray-500">{e.actor}</div>
               </div>
               {e.timestamp && e.timestamp !== '1970-01-01T00:00:00Z' && (

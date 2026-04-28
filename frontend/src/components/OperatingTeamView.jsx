@@ -9,7 +9,7 @@ const REVIEWERS = [
   { key: 'compliance', label: 'Compliance', damlRole: 'ComplianceProvider' },
 ]
 
-function CaseHeader({ c }) {
+function CaseHeader({ c, reviewsDone }) {
   return (
     <div className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/30">
       <div className="flex items-start justify-between mb-4">
@@ -17,11 +17,18 @@ function CaseHeader({ c }) {
           <div className="text-xl font-bold text-white">{c.asset_id}</div>
           <div className="text-sm text-gray-400 mt-1">{c.asset_type} · {c.issuer}</div>
         </div>
-        <StatusBadge status={c.status} />
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-xs text-gray-500">Reviews</div>
+            <div className="text-sm font-bold text-gray-300">{reviewsDone}/3</div>
+          </div>
+          <StatusBadge status={c.status} />
+        </div>
       </div>
-      <div className="grid grid-cols-3 gap-4 text-sm">
+      <div className="grid grid-cols-4 gap-4 text-sm">
         <div><span className="text-gray-500">Maturity</span><div className="text-gray-300 font-medium">{c.maturity}</div></div>
         <div><span className="text-gray-500">Coupon</span><div className="text-gray-300 font-medium">{c.coupon}</div></div>
+        <div><span className="text-gray-500">Notional</span><div className="text-gray-300 font-medium">$5,000,000</div></div>
         <div><span className="text-gray-500">Type</span><div className="text-gray-300 font-medium">{c.asset_type}</div></div>
       </div>
     </div>
@@ -41,7 +48,7 @@ function ReviewerCards({ results }) {
           <div key={key} className={`p-4 rounded-xl border ${border[status]} ${bg[status]}`}>
             <div className="flex items-center gap-2 mb-2">
               <div className={`w-2 h-2 rounded-full ${dot[status]}`} />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
+              <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">{label}</span>
             </div>
             <div className="text-lg font-semibold capitalize text-gray-200">{status}</div>
             {r?.rationale && <div className="text-xs text-gray-500 mt-2 line-clamp-2">{r.rationale}</div>}
@@ -128,7 +135,8 @@ export default function OperatingTeamView() {
 
   const activeCase = cases[0]
   const decision = !activeCase ? decisions[0] : null
-  const allSubmitted = results.length >= 3
+  const reviewsDone = REVIEWERS.filter(({ damlRole }) => results.some(r => r.reviewer_role === damlRole)).length
+  const allSubmitted = reviewsDone >= 3
 
   return (
     <div className="space-y-5">
@@ -141,7 +149,7 @@ export default function OperatingTeamView() {
         </div>
       ) : activeCase ? (
         <div className="space-y-4">
-          <CaseHeader c={activeCase} />
+          <CaseHeader c={activeCase} reviewsDone={reviewsDone} />
           <ReviewerCards results={results} />
           {allSubmitted && (
             <button onClick={() => handleFinalize(activeCase.contract_id)} disabled={loading}
