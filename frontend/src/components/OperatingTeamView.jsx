@@ -125,15 +125,12 @@ export default function OperatingTeamView() {
   }
 
   const handleFinalize = async (contractId) => {
-    const toDecision = (role) => {
-      const r = results.find(x => x.reviewer_role === role)
-      return r?.decision === 'Approve' ? 'approve' : 'reject'
-    }
+    const getCid = (role) => results.find(x => x.reviewer_role === role)?.contract_id || ''
     setLoading(true)
     await api.finalize(contractId, {
-      custodian_decision: toDecision('Custodian'),
-      legal_decision: toDecision('LegalCounsel'),
-      compliance_decision: toDecision('ComplianceProvider'),
+      custodian_result_cid: getCid('Custodian'),
+      legal_result_cid: getCid('LegalCounsel'),
+      compliance_result_cid: getCid('ComplianceProvider'),
     })
     await refresh()
     setLoading(false)
