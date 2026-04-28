@@ -3,23 +3,88 @@ import { api } from '../api'
 import StatusBadge from './StatusBadge'
 import AuditTrail from './AuditTrail'
 
-const REVIEWER_LABELS = { custodian: 'Custodian', legal: 'Legal Counsel', compliance: 'Compliance' }
+const REVIEWERS = [
+  { key: 'custodian', label: 'Custodian', damlRole: 'Custodian' },
+  { key: 'legal', label: 'Legal Counsel', damlRole: 'LegalCounsel' },
+  { key: 'compliance', label: 'Compliance', damlRole: 'ComplianceProvider' },
+]
 
-function ReviewerStatus({ results }) {
+function CaseHeader({ c }) {
+  return (
+    <div className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/30">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="text-xl font-bold text-white">{c.asset_id}</div>
+          <div className="text-sm text-gray-400 mt-1">{c.asset_type} · {c.issuer}</div>
+        </div>
+        <StatusBadge status={c.status} />
+      </div>
+      <div className="grid grid-cols-3 gap-4 text-sm">
+        <div><span className="text-gray-500">Maturity</span><div className="text-gray-300 font-medium">{c.maturity}</div></div>
+        <div><span className="text-gray-500">Coupon</span><div className="text-gray-300 font-medium">{c.coupon}</div></div>
+        <div><span className="text-gray-500">Type</span><div className="text-gray-300 font-medium">{c.asset_type}</div></div>
+      </div>
+    </div>
+  )
+}
+
+function ReviewerCards({ results }) {
   return (
     <div className="grid grid-cols-3 gap-3">
-      {Object.entries(REVIEWER_LABELS).map(([key, label]) => {
-        const r = results.find(x => x.reviewer_role === { custodian: 'Custodian', legal: 'LegalCounsel', compliance: 'ComplianceProvider' }[key])
+      {REVIEWERS.map(({ key, label, damlRole }) => {
+        const r = results.find(x => x.reviewer_role === damlRole)
         const status = r ? (r.decision === 'Approve' ? 'approved' : 'rejected') : 'pending'
-        const colors = { approved: 'border-green-500 bg-green-500/10', rejected: 'border-red-500 bg-red-500/10', pending: 'border-gray-600 bg-gray-800' }
+        const border = { approved: 'border-green-500/50', rejected: 'border-red-500/50', pending: 'border-gray-700/50' }
+        const bg = { approved: 'bg-green-500/5', rejected: 'bg-red-500/5', pending: 'bg-gray-800/30' }
+        const dot = { approved: 'bg-green-500', rejected: 'bg-red-500', pending: 'bg-gray-600' }
         return (
-          <div key={key} className={`p-4 rounded-lg border ${colors[status]}`}>
-            <div className="text-sm text-gray-400">{label}</div>
-            <div className="text-lg font-semibold capitalize mt-1">{status}</div>
-            {r?.rationale && <div className="text-xs text-gray-500 mt-2">{r.rationale}</div>}
+          <div key={key} className={`p-4 rounded-xl border ${border[status]} ${bg[status]}`}>
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`w-2 h-2 rounded-full ${dot[status]}`} />
+              <span className="text-xs text-gray-500 uppercase tracking-wider">{label}</span>
+            </div>
+            <div className="text-lg font-semibold capitalize text-gray-200">{status}</div>
+            {r?.rationale && <div className="text-xs text-gray-500 mt-2 line-clamp-2">{r.rationale}</div>}
+            {r?.submitted_at && <div className="text-xs text-gray-600 mt-1">{new Date(r.submitted_at).toLocaleTimeString()}</div>}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function DecisionSummary({ decision }) {
+  const allApproved = decision.audit_log?.every(e =>
+    !e.event_type.includes('Result') || e.event_type.includes('Approve')
+  )
+  const reviewCount = decision.audit_log?.filter(e => e.event_type.includes('Result')).length || 0
+  return (
+    <div className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/30">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <div className="text-xl font-bold text-white">{decision.asset_id}</div>
+          <div className="text-sm text-gray-400 mt-1">Final Eligibility Decision</div>
+        </div>
+        <StatusBadge status={decision.status} />
+      </div>
+      <div className="grid grid-cols-3 gap-4 text-sm">
+        <div className="p-3 rounded-lg bg-gray-900/50">
+          <div className="text-gray-500 text-xs uppercase tracking-wider">Reviews</div>
+          <div className="text-lg font-bold text-gray-200 mt-1">{reviewCount}/3</div>
+        </div>
+        <div className="p-3 rounded-lg bg-gray-900/50">
+          <div className="text-gray-500 text-xs uppercase tracking-wider">Decision</div>
+          <div className={`text-lg font-bold mt-1 ${decision.status === 'Eligible' ? 'text-green-400' : 'text-red-400'}`}>
+            {decision.status}
+          </div>
+        </div>
+        <div className="p-3 rounded-lg bg-gray-900/50">
+          <div className="text-gray-500 text-xs uppercase tracking-wider">Path</div>
+          <div className="text-sm font-medium text-gray-300 mt-1">
+            {allApproved ? 'All approved' : 'Reviewer rejected'}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -47,73 +112,52 @@ export default function OperatingTeamView() {
   }
 
   const handleFinalize = async (contractId) => {
-    const getCid = (role) => {
+    const toDecision = (role) => {
       const r = results.find(x => x.reviewer_role === role)
-      return r?.contract_id || ''
+      return r?.decision === 'Approve' ? 'approve' : 'reject'
     }
     setLoading(true)
     await api.finalize(contractId, {
-      custodian_result_cid: getCid('Custodian'),
-      legal_result_cid: getCid('LegalCounsel'),
-      compliance_result_cid: getCid('ComplianceProvider'),
+      custodian_decision: toDecision('Custodian'),
+      legal_decision: toDecision('LegalCounsel'),
+      compliance_decision: toDecision('ComplianceProvider'),
     })
     await refresh()
     setLoading(false)
   }
 
   const activeCase = cases[0]
-  // Show active case over old decisions (reset creates new case while old decision persists)
   const decision = !activeCase ? decisions[0] : null
   const allSubmitted = results.length >= 3
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-blue-400">Operating Team Dashboard</h2>
+    <div className="space-y-5">
+      <h2 className="text-lg font-semibold text-blue-400">Operating Team — Case Workbench</h2>
 
       {decision ? (
         <div className="space-y-4">
-          <div className="p-6 rounded-xl border border-gray-700 bg-gray-800/50">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="text-lg font-semibold">{decision.asset_id}</div>
-                <div className="text-sm text-gray-400">Final Eligibility Decision</div>
-              </div>
-              <StatusBadge status={decision.status} />
-            </div>
-            <div className="text-xs text-gray-600 font-mono space-y-1">
-              <div>Contract: {decision.contract_id?.slice(0, 32)}…</div>
-              {decision.ledger_offset && <div>Ledger offset: {decision.ledger_offset}</div>}
-              {decision.created_at && <div>Recorded: {new Date(decision.created_at).toLocaleString()}</div>}
-            </div>
-          </div>
+          <DecisionSummary decision={decision} />
           <AuditTrail entries={decision.audit_log || []} />
         </div>
       ) : activeCase ? (
         <div className="space-y-4">
-          <div className="p-6 rounded-xl border border-gray-700 bg-gray-800/50">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="text-lg font-semibold">{activeCase.asset_id}</div>
-                <div className="text-sm text-gray-400">{activeCase.asset_type} · {activeCase.issuer}</div>
-              </div>
-              <StatusBadge status={activeCase.status} />
-            </div>
-            <div className="text-xs text-gray-500 mb-4">Maturity: {activeCase.maturity} · Coupon: {activeCase.coupon}</div>
-            <ReviewerStatus results={results} />
-            {allSubmitted && (
-              <button onClick={() => handleFinalize(activeCase.contract_id)} disabled={loading}
-                className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium transition disabled:opacity-50">
-                {loading ? 'Finalizing...' : 'Finalize Decision'}
-              </button>
-            )}
-          </div>
+          <CaseHeader c={activeCase} />
+          <ReviewerCards results={results} />
+          {allSubmitted && (
+            <button onClick={() => handleFinalize(activeCase.contract_id)} disabled={loading}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-medium transition disabled:opacity-50">
+              {loading ? 'Finalizing...' : 'Finalize Decision'}
+            </button>
+          )}
           <AuditTrail entries={activeCase.audit_log || []} />
         </div>
       ) : (
-        <button onClick={handleCreate} disabled={loading}
-          className="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-medium text-lg transition disabled:opacity-50">
-          {loading ? 'Creating...' : 'Create Review Case'}
-        </button>
+        <div className="flex items-center justify-center py-16">
+          <button onClick={handleCreate} disabled={loading}
+            className="px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-medium text-lg transition disabled:opacity-50">
+            {loading ? 'Creating...' : 'Create Review Case'}
+          </button>
+        </div>
       )}
     </div>
   )
