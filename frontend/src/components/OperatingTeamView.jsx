@@ -65,6 +65,7 @@ function DecisionSummary({ decision }) {
     !e.event_type.includes('Result') || e.event_type.includes('Approve')
   )
   const reviewCount = decision.audit_log?.filter(e => e.event_type.includes('Result')).length || 0
+  const shortId = decision.contract_id ? `#${decision.contract_id.slice(0, 8)}…${decision.contract_id.slice(-4)}` : null
   return (
     <div className="p-6 rounded-xl border border-gray-700/50 bg-gray-800/30">
       <div className="flex items-start justify-between mb-6">
@@ -92,6 +93,11 @@ function DecisionSummary({ decision }) {
           </div>
         </div>
       </div>
+      {shortId && (
+        <div className="mt-4 pt-3 border-t border-gray-700/30 text-xs text-gray-600">
+          Decision contract <span className="font-mono text-gray-500">{shortId}</span>
+        </div>
+      )}
     </div>
   )
 }

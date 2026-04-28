@@ -31,17 +31,17 @@ export default function App() {
         {role === 'operatingteam' ? <OperatingTeamView /> : <ReviewerView role={role} />}
       </main>
 
-      <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-800/30 bg-gray-950/90 backdrop-blur px-6 py-1.5">
-        <div className="max-w-5xl mx-auto flex items-center justify-between text-[11px] text-gray-600">
+      <footer className="fixed bottom-0 left-0 right-0 border-t border-gray-800/30 bg-gray-950/90 backdrop-blur px-6 py-2">
+        <div className="max-w-5xl mx-auto flex items-center justify-between text-xs text-gray-500">
           <span>LeventLabs · HackCanton Season #1</span>
           {network?.connected ? (
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Canton DevNet · offset {network.ledger_offset?.toLocaleString()}
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              Connected to Canton DevNet · ledger offset {network.ledger_offset?.toLocaleString()}
             </span>
           ) : (
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500" />
               Disconnected
             </span>
           )}
