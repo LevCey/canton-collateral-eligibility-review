@@ -121,8 +121,17 @@ npm run dev
 
 - **Asset:** Tokenized private credit note (PCN-2026-001)
 - **Issuer:** Meridian Capital
+- **Notional:** $5,000,000
 - **Decision:** Is this note eligible as collateral?
 - **Roles:** Operating Team, Custodian, Legal Counsel, Compliance Provider
+
+### Happy Path
+
+All reviewers approve → **Eligible**. This is the primary demo flow.
+
+### Rejection Path
+
+If any reviewer rejects, the same workflow produces an **Ineligible** decision. The rejecting reviewer and their rationale are visible in the audit trail. This is tested on-ledger (`testRejection`) and works end-to-end — the demo focuses on the happy path for clarity.
 
 ## Why Canton
 
