@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "http://46.224.56.32:8000/:path*" }
+    { "source": "/api/:path*", "destination": "${BACKEND_URL}/:path*" }
   ]
 }
