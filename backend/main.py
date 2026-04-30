@@ -49,8 +49,20 @@ async def lifespan(app: FastAPI):
     await canton.close()
 
 
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://collateralreview.xyz,https://canton-collateral-eligibility-revie.vercel.app,http://localhost:5173").split(",")
+API_KEY = os.getenv("API_KEY", "")
+
 app = FastAPI(title="Collateral Eligibility Review", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+
+@app.middleware("http")
+async def check_api_key(request, call_next):
+    if API_KEY and request.url.path not in ("/health", "/network"):
+        key = request.headers.get("x-api-key", "")
+        if key != API_KEY:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=403, content={"detail": "Invalid API key"})
+    return await call_next(request)
 
 
 # --- Models ---

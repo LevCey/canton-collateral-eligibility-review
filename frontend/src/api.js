@@ -1,8 +1,11 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const KEY = import.meta.env.VITE_API_KEY || ''
 
-const get = (path) => fetch(`${API}${path}`).then(r => r.json())
+const headers = { 'Content-Type': 'application/json', ...(KEY && { 'x-api-key': KEY }) }
+
+const get = (path) => fetch(`${API}${path}`, { headers }).then(r => r.json())
 const post = (path, body) => fetch(`${API}${path}`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  method: 'POST', headers, body: JSON.stringify(body),
 }).then(r => r.json())
 
 export const api = {
