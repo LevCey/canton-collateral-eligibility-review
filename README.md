@@ -62,7 +62,7 @@ Privacy guarantees are enforced on-ledger and verified by Daml tests.
 │   ├── CollateralReview/Main.daml # Templates: ReviewTask, ReviewResult,
 │   │                              # CollateralReviewCase, EligibilityDecision
 │   ├── Setup.daml                 # Party allocation + demo case
-│   └── Test.daml                  # 8 tests including privacy assertions
+│   └── Test.daml                  # 9 tests including privacy assertions
 ├── backend/                       # FastAPI service
 │   ├── main.py                    # REST endpoints
 │   ├── canton_client.py           # Canton JSON API v2 client
@@ -121,7 +121,7 @@ npm run dev
 
 - **Asset:** Tokenized private credit note (PCN-2026-001)
 - **Issuer:** Meridian Capital
-- **Notional:** $5,000,000
+- **Notional:** $5,000,000 (UI display only — not stored on-ledger)
 - **Decision:** Is this note eligible as collateral?
 - **Roles:** Operating Team, Custodian, Legal Counsel, Compliance Provider
 
@@ -131,7 +131,7 @@ All reviewers approve → **Eligible**. This is the primary demo flow.
 
 ### Rejection Path
 
-If any reviewer rejects, the same workflow produces an **Ineligible** decision. The rejecting reviewer and their rationale are visible in the audit trail. This is tested on-ledger (`testRejection`) and works end-to-end — the demo focuses on the happy path for clarity.
+If any reviewer rejects, the same workflow produces an **Ineligible** decision. The rejecting reviewer is recorded in the on-ledger audit trail; their rationale is stored in the `ReviewResult` contract (visible to the Operating Team). This is tested on-ledger (`testRejection`) and works end-to-end — the demo focuses on the happy path for clarity.
 
 ## Why Canton
 
