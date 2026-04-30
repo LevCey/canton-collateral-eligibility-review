@@ -1,4 +1,4 @@
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || '/api'
 const KEY = import.meta.env.VITE_API_KEY || ''
 
 const headers = { 'Content-Type': 'application/json', ...(KEY && { 'x-api-key': KEY }) }
