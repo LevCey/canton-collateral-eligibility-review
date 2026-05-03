@@ -301,3 +301,32 @@ def _extract_events(tx_result: dict) -> list[dict]:
     tx = tx_result.get("transaction", {})
     events = tx.get("events", [])
     return [e.get("CreatedEvent", e) for e in events if "CreatedEvent" in e or "contractId" in e]
+
+
+@app.post("/reset")
+async def reset_demo():
+    """Create a fresh demo case with review tasks. Old contracts remain but UI prioritizes active case."""
+    party = _get_party("operatingteam")
+    user = USERS["operatingteam"]
+    payload = {
+        "operatingTeam": party,
+        "custodian": PARTIES["custodian"],
+        "legalCounsel": PARTIES["legal"],
+        "complianceProvider": PARTIES["compliance"],
+        "assetId": "PCN-2026-001", "assetType": "Private Credit Note",
+        "issuer": "Meridian Capital", "maturity": "2027-06-15", "coupon": "5.25%",
+        "status": "UnderReview",
+        "tasksCreated": False,
+        "auditLog": [{"eventType": "CaseCreated", "actor": party, "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}],
+    }
+    try:
+        result = await canton.create_contract(user, [party], MOD, "CollateralReviewCase", payload)
+        events = _extract_events(result)
+        case_cid = events[0]["contractId"] if events else None
+        if case_cid:
+            task_result = await canton.exercise_choice(user, [party], case_cid, MOD, "CollateralReviewCase", "CreateReviewTasks", {})
+            task_events = _extract_events(task_result)
+            case_cid = task_events[0]["contractId"] if task_events else case_cid
+        return {"success": True, "case_contract_id": case_cid}
+    except Exception as e:
+        raise HTTPException(502, str(e))

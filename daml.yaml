@@ -1,8 +1,8 @@
 sdk-version: 3.4.10
-name: collateral-review
+name: collateral-review-v3
 source: daml
 init-script: Setup:setup
-version: 0.2.0
+version: 0.3.0
 exposed-modules:
   - CollateralReview.Main
   - Setup
